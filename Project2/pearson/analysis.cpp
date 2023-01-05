@@ -16,8 +16,11 @@ struct pearson_thread_data
 {
     unsigned startRow;
     unsigned rowsCount;
-    std::vector<double> result;
+    unsigned cap;
 
+    unsigned* iter;
+    std::vector<double>* result;
+    
     pthread_mutex_t* lock;
     std::vector<Vector>* datasets;
 };
@@ -27,39 +30,38 @@ std::vector<double> paracorrelation_coefficients(std::vector<Vector> datasets, u
     pthread_t threads[threadCount];
     pearson_thread_data data [threadCount];
 
-    int rows = datasets.size() / threadCount;
+    int rows = datasets.size();
 
     pthread_mutex_t lock;
     pthread_mutex_init(&lock, NULL);
 
     std::vector<double> result {};
+    unsigned iter = 0;
 
     for(int i = 0; i < threadCount; i++)
     {
-        /*
-        unsigned l = length;
-        unsigned end = (i * length) + length;
-
-        if(end > totalLength)
-        {
-            l = totalLength - (i * length);
-        }
-        */
-
-        data[i].result = std::vector<double>();
+        data[i].result = &result;
         data[i].lock = &lock;
-        data[i].startRow = i * rows;
-        data[i].rowsCount = rows;
+
+        data[i].rowsCount = (rows / threadCount);
+        data[i].startRow = i * data[i].rowsCount;
+
         data[i].datasets = &datasets;
+        data[i].iter = &iter;
+        data[i].cap = rows;
         
+        printf("starting %i range(%i-%i) rows(%i)\n", i, (i*data[i].rowsCount), ((i*rows)+rows-1), rows - data[i].startRow);
         pthread_create(&threads[i], NULL, calc_coefficients, &data[i]);
     }
 
     for(int i = 0; i < threadCount; i++)
         pthread_join(threads[i], NULL);
 
-    for(int i = 0; i < threadCount; i++)
-        result.insert(result.end(), data[i].result.begin(), data[i].result.end());
+    //for(int i = 0; i < threadCount; i++)
+     //   result.insert(result.end(), data[i].result.begin(), data[i].result.end());
+
+
+    printf("normal bitch did %i\n", iter);
 
     return result;
 }
@@ -68,35 +70,40 @@ void* calc_coefficients (void* v)
 {
     pearson_thread_data* data = static_cast<pearson_thread_data*>(v);
  
-    int max = data->startRow + data->rowsCount;
-    
-    for(int sample1 = data->startRow; sample1 < max - 1; sample1++)
-    {
-        for(int sample2 = (sample1 + 1); sample2 < max; sample2++)
-        {
-            double corr = pearson((*data->datasets)[sample1], (*data->datasets)[sample2]);
-            pthread_mutex_lock(data->lock);
+    const unsigned max = data->startRow + data->rowsCount;
 
-            data->result.push_back(corr);
+    for(unsigned sample1 = data->startRow; sample1 < max; sample1++)
+    {
+        for(unsigned sample2 = (sample1 + 1); sample2 < data->cap; sample2++)
+        {
+            //__atomic_fetch_add(data->iter, 1, __ATOMIC_SEQ_CST);
+
+            double corr = pearson(data->datasets->at(sample1), data->datasets->at(sample2));
             
+            pthread_mutex_lock(data->lock);
+            data->result->push_back(corr);
             pthread_mutex_unlock(data->lock);
         }
     }
+    
 }
 
 std::vector<double> correlation_coefficients(std::vector<Vector> datasets)
 {
     std::vector<double> result {};
+    unsigned iter = 0;
 
     for (int sample1 = 0; sample1 < datasets.size() - 1; sample1++)
     {
         for (int sample2 = (sample1 + 1); sample2 < datasets.size(); sample2++) 
         {
+            iter ++;
             double corr = pearson(datasets[sample1], datasets[sample2]);
             result.push_back(corr);
         }
     }
 
+    printf("normal bitch did %i\n", iter);
     return result;
 }
 
