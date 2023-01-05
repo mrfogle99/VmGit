@@ -9,8 +9,13 @@ Author: David Holmqvist <daae19@student.bth.se>
 #define ANALYSIS_HPP
 
 namespace Analysis {
-std::vector<double> correlation_coefficients(std::vector<Vector> datasets);
-double pearson(Vector vec1, Vector vec2);
+
+    std::vector<double> paracorrelation_coefficients(std::vector<Vector> datasets, unsigned threadCount);
+    void* calc_coefficients (void* v);
+
+    std::vector<double> correlation_coefficients(std::vector<Vector> datasets);
+    double pearson(Vector vec1, Vector vec2);
+
 };
 
 #endif
