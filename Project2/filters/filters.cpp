@@ -153,9 +153,23 @@ Matrix parathreshold (Matrix m, int maxThreads)
 {
     Matrix scratch { PPM::max_dimension };
     Matrix dst { m };
+/*
+    unsigned sum = 0;
+    unsigned area { dst.get_x_size() * dst.get_y_size() };
+
+    for (auto i { 0 }; i < area; i++) {
+        sum += dst.r(i, 0) + dst.g(i, 0) + dst.b(i, 0);
+    }
+
+    printf("og sum: %u over area %u\n", sum, area);
+    sum /= area;
+    printf("og sum after: %u\n", sum);
+*/
+
+    // im4 ger 444, im1 ger 326 t.ex
 
     unsigned totalLength = dst.get_x_size() * dst.get_y_size();
-    unsigned length = totalLength / maxThreads;
+    unsigned length = totalLength / (unsigned)maxThreads;
 
     pthread_t threads [maxThreads];
     threshold_thread_data data [maxThreads];
@@ -165,20 +179,11 @@ Matrix parathreshold (Matrix m, int maxThreads)
 
     unsigned sum = 0;
 
-    for (auto i { 0 }; i < totalLength; i++) {
-        sum += dst.r(i, 0) + dst.g(i, 0) + dst.b(i, 0);
-    }
-
-    sum /= totalLength;
-
-
-
-    sum = 0;
-
     for(int i = 0; i < maxThreads; i++)
     {
         unsigned l = length;
         unsigned end = (i * length) + length;
+
         if(end > totalLength)
         {
             l = totalLength - (i * length);
@@ -190,7 +195,9 @@ Matrix parathreshold (Matrix m, int maxThreads)
         data[i].index = i * length;
         data[i].barr = &barr;
         data[i].sum = &sum;
-        pthread_create(&threads[i], NULL, calcthreshold, (void*)&data[i]);
+
+        printf("starting thread. index(%u) length(%u)\n", data[i].index, data[i].length);
+        pthread_create(&threads[i], NULL, calcthreshold, &data[i]);
     }
 
     for(int i = 0; i < maxThreads; i++)
@@ -205,30 +212,28 @@ Matrix parathreshold (Matrix m, int maxThreads)
 void* calcthreshold (void* args)
 {
     threshold_thread_data* data = static_cast<threshold_thread_data*>(args);
-  
-    for(int j = 0; j < data->length; j++)
+    Matrix* mat = data->mat;
+
+    for(unsigned j = 0; j < data->length; j++)
     {
-        int i = (j + data->index);  
-        unsigned val = data->mat->r(i, 0) + data->mat->g(i, 0) + data->mat->b(i, 0); 
-        *data->sum += val;
+        const unsigned i = (j + data->index);  
+        unsigned val = mat->r(i, 0) + mat->g(i, 0) + mat->b(i, 0); 
+        __atomic_fetch_add(data->sum, val, __ATOMIC_SEQ_CST);
     }
 
     pthread_barrier_wait(data->barr);
-
-    int sum = *data->sum;
-    sum /= (data->mat->get_x_size() * data->mat->get_y_size());
-
-    unsigned psum {};
+    unsigned sum = *data->sum / (mat->get_x_size() * mat->get_y_size());
+    unsigned psum = 0;
 
     for (int j = 0; j < data->length; j++) 
     {
         int i = data->index + j;
-        psum = data->mat->r(i, 0) + data->mat->g(i, 0) + data->mat->b(i, 0);
+        psum = mat->r(i, 0) + mat->g(i, 0) + mat->b(i, 0);
 
         if (sum > psum) {
-            data->mat->r(i, 0) = data->mat->g(i, 0) = data->mat->b(i, 0) = 0;
+            mat->r(i, 0) = mat->g(i, 0) = mat->b(i, 0) = 0;
         } else {
-            data->mat->r(i, 0) = data->mat->g(i, 0) = data->mat->b(i, 0) = 255;
+            mat->r(i, 0) = mat->g(i, 0) = mat->b(i, 0) = 255;
         }
     }
 
