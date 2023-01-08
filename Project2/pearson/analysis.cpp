@@ -60,9 +60,6 @@ std::vector<double> paracorrelation_coefficients(std::vector<Vector> datasets, u
     //for(int i = 0; i < threadCount; i++)
      //   result.insert(result.end(), data[i].result.begin(), data[i].result.end());
 
-
-    printf("normal bitch did %i\n", iter);
-
     return result;
 }
 
@@ -103,7 +100,6 @@ std::vector<double> correlation_coefficients(std::vector<Vector> datasets)
         }
     }
 
-    printf("normal bitch did %i\n", iter);
     return result;
 }
 

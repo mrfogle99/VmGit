@@ -26,6 +26,10 @@ struct blur_thread_data
     unsigned length;
     unsigned radius;
     Matrix* mat;
+
+    pthread_barrier_t* barr;
+    pthread_mutex_t* lock;
+    Matrix* scratch;
 };
 
 Matrix parablur (Matrix m, const int radius, const int maxThreads)
@@ -36,9 +40,14 @@ Matrix parablur (Matrix m, const int radius, const int maxThreads)
     unsigned totalLength = dst.get_x_size() * dst.get_y_size();
     unsigned length = totalLength / maxThreads;
 
-
     pthread_t threads [maxThreads];
     blur_thread_data ranges[maxThreads];
+
+    pthread_mutex_t lock;
+    pthread_mutex_init(&lock, NULL);
+
+    pthread_barrier_t barr;
+    pthread_barrier_init(&barr, NULL, maxThreads);
 
     for(int i = 0; i < maxThreads; i++)
     {
@@ -51,6 +60,10 @@ Matrix parablur (Matrix m, const int radius, const int maxThreads)
         ranges[i].length = l;
         ranges[i].index = i * length;
         ranges[i].radius = radius;
+        ranges[i].lock = &lock;
+        ranges[i].scratch = &scratch;
+        ranges[i].barr = &barr;
+
         pthread_create(&threads[i], NULL, calc_blur, (void*)&ranges[i]);
     }
 
@@ -64,78 +77,80 @@ Matrix parablur (Matrix m, const int radius, const int maxThreads)
 
 void* calc_blur (void* args)
 {
-    blur_thread_data* range = static_cast<blur_thread_data*>(args);
-    Matrix scratch { PPM::max_dimension };
-
+    blur_thread_data* data = static_cast<blur_thread_data*>(args);
     double w[Gauss::max_radius] {};
-    Gauss::get_weights(range->radius, w);
+    Gauss::get_weights(data->radius, w);
 
-
-    for(int i = 0; i < range->length; i++)
+    for(int i = 0; i < data->length; i++)
     {
-        int j = (i + range->index);
-        int x = j / range->mat->get_y_size();
-        int y = j % range->mat->get_y_size();
+        int j = (i + data->index);
+        int x = j % data->mat->get_x_size();
+        int y = j / data->mat->get_x_size();
 
-        auto r { w[0] * range->mat->r(x, y) };
-        auto g { w[0] * range->mat->g(x, y) };
-        auto b { w[0] * range->mat->b(x, y) };
+        auto r { w[0] * data->mat->r(x, y) };
+        auto g { w[0] * data->mat->g(x, y) };
+        auto b { w[0] * data->mat->b(x, y) };
         auto n { w[0] };
 
-        for (auto wi { 1 }; wi <= range->radius; wi++) {
+        for (auto wi { 1 }; wi <= data->radius; wi++) {
             auto wc { w[wi] };
             auto x2 { x - wi };
             if (x2 >= 0) {
-                r += wc * range->mat->r(x2, y);
-                g += wc * range->mat->g(x2, y);
-                b += wc * range->mat->b(x2, y);
+                r += wc * data->mat->r(x2, y);
+                g += wc * data->mat->g(x2, y);
+                b += wc * data->mat->b(x2, y);
                 n += wc;
             }
             x2 = x + wi;
-            if (x2 < range->mat->get_x_size()) {
-                r += wc * range->mat->r(x2, y);
-                g += wc * range->mat->g(x2, y);
-                b += wc * range->mat->b(x2, y);
+            if (x2 < data->mat->get_x_size()) {
+                r += wc * data->mat->r(x2, y);
+                g += wc * data->mat->g(x2, y);
+                b += wc * data->mat->b(x2, y);
                 n += wc;
             }
         }
-        scratch.r(x, y) = r / n;
-        scratch.g(x, y) = g / n;
-        scratch.b(x, y) = b / n;
+
+        pthread_mutex_lock(data->lock);
+        data->scratch->r(x, y) = r / n;
+        data->scratch->g(x, y) = g / n;
+        data->scratch->b(x, y) = b / n;
+        pthread_mutex_unlock(data->lock);
     }
 
-    for(int i = 0; i < range->length; i++)
-    {
-        int j = (i + range->index);
-        int x = j / range->mat->get_y_size();
-        int y = j % range->mat->get_y_size();
+    pthread_barrier_wait(data->barr);
 
-        auto r { w[0] * scratch.r(x, y) };
-        auto g { w[0] * scratch.g(x, y) };
-        auto b { w[0] * scratch.b(x, y) };
+    for(int i = 0; i < data->length; i++)
+    {
+        int j = (i + data->index);
+        int x = j % data->mat->get_x_size();
+        int y = j / data->mat->get_x_size();
+
+        auto r { w[0] * data->scratch->r(x, y) };
+        auto g { w[0] * data->scratch->g(x, y) };
+        auto b { w[0] * data->scratch->b(x, y) };
         auto n { w[0] };
 
-        for (auto wi { 1 }; wi <= range->radius; wi++) {
+        for (auto wi { 1 }; wi <= data->radius; wi++) {
             auto wc { w[wi] };
             auto y2 { y - wi };
             if (y2 >= 0) {
-                r += wc * scratch.r(x, y2);
-                g += wc * scratch.g(x, y2);
-                b += wc * scratch.b(x, y2);
+                r += wc * data->scratch->r(x, y2);
+                g += wc * data->scratch->g(x, y2);
+                b += wc * data->scratch->b(x, y2);
                 n += wc;
             }
             y2 = y + wi;
-            if (y2 < range->mat->get_y_size()) {
-                r += wc * scratch.r(x, y2);
-                g += wc * scratch.g(x, y2);
-                b += wc * scratch.b(x, y2);
+            if (y2 < data->mat->get_y_size()) {
+                r += wc * data->scratch->r(x, y2);
+                g += wc * data->scratch->g(x, y2);
+                b += wc * data->scratch->b(x, y2);
                 n += wc;
             }
         }
 
-        range->mat->r(x, y) = r / n;
-        range->mat->g(x, y) = g / n;
-        range->mat->b(x, y) = b / n;
+        data->mat->r(x, y) = r / n;
+        data->mat->g(x, y) = g / n;
+        data->mat->b(x, y) = b / n;
     }
 }
 

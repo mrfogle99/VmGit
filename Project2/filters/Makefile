@@ -6,10 +6,10 @@ CXXFLAGS=-std=c++17 -g -Wunused -Wall -Wunused -pthread
 all: blur threshold
 
 threshold: matrix ppm filters threshold.cpp
-	$(CXX) $(CXXFLAGS) threshold.cpp matrix.o ppm.o filters.o -o threshold
+	$(CXX) $(CXXFLAGS) threshold.cpp matrix.o ppm.o filters.o -o threshold_par
 
 blur: matrix ppm filters blur.cpp
-	$(CXX) $(CXXFLAGS) blur.cpp matrix.o ppm.o filters.o -o blur
+	$(CXX) $(CXXFLAGS) blur.cpp matrix.o ppm.o filters.o -o blur_par
 
 filters: matrix filters.hpp filters.cpp
 	$(CXX) $(CXXFLAGS) -c filters.cpp -o filters.o

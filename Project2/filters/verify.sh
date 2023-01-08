@@ -26,6 +26,7 @@ files=(im1.ppm im2.ppm im3.ppm im4.ppm)
 filters=(blur threshold)
 user_filters=($1 $2)
 radius=15
+threads=4
 
 for filter in ${filters[@]} ${user_filters[@]}
 do
@@ -35,11 +36,11 @@ done
 for file in ${files[@]}
 do
     ./blur $radius data/$file data/blurred_$file
-    $1 $radius data/$file data/user_blurred_$file
+    $1 $radius data/$file data/user_blurred_$file $threads
     check_equal $file "blur" data/blurred_$file data/user_blurred_$file
     rm data/blurred_$file data/user_blurred_$file
     ./threshold data/$file data/thresholded_$file
-    $2 data/$file data/user_thresholded_$file
+    $2 data/$file data/user_thresholded_$file $threads
     check_equal $file "threshold" data/thresholded_$file data/user_thresholded_$file
     rm data/thresholded_$file data/user_thresholded_$file
 done
